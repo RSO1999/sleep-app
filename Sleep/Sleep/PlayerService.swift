@@ -10,11 +10,11 @@ import AVFoundation
 
 /// Manages one track’s playback using an AVAudioPlayerNode and a per-track mixer node.
 /// Handles loading, scheduling, playback control, and cleanup.
-/// Effects can be inserted later between playerNode and trackMixer.
+/// Effects are routed through a modular TrackEffectChain so this class stays playback-focused.
 final class PlayerService {
     // This service receives a PlayerTrack model, not a raw audio file.
-    // PlayerTrack holds metadata + file location
-    // PlayerService.load() opens the real audio file using track.url
+    // PlayerTrack holds metadata + file location.
+    // PlayerService.load() opens the real audio file using track.url.
     let track: PlayerTrack
 
     // Produces the audio for this track.
@@ -23,8 +23,12 @@ final class PlayerService {
     // Handles per-track mixing, gain, and pan.
     private(set) lazy var trackMixer = AVAudioMixerNode()
 
+    // Modular effect layer. Starts empty but gives us a place to add effects later
+    // without changing PlayerService's responsibilities.
+    private let effectChain = TrackEffectChain()
+
     private var audioFile: AVAudioFile?
-    
+
     // Uses the shared engine host; does not own the singleton.
     private let engineHost = EngineHost.shared
 
@@ -35,15 +39,18 @@ final class PlayerService {
         engineHost.attach(node: playerNode)
         engineHost.attach(node: trackMixer)
 
-        // Connect player -> trackMixer -> mainMixer.
-        // The engine host chooses the format using the main mixer by default.
-        engineHost.connect(source: playerNode, to: trackMixer, format: nil)
+        // Route the player through the effect chain and then into the track mixer.
+        // For now the chain is pass-through, so this is effectively:
+        // playerNode -> trackMixer -> mainMixerNode
+        effectChain.connect(source: playerNode, to: trackMixer, format: nil)
+
+        // Final output into the main mixer.
         engineHost.connect(source: trackMixer, to: engineHost.engine.mainMixerNode, format: nil)
     }
 
     deinit {
         // Clean up connections and detach nodes.
-        engineHost.disconnect(node: playerNode)
+        effectChain.disconnect()
         engineHost.disconnect(node: trackMixer)
         engineHost.detach(node: playerNode)
         engineHost.detach(node: trackMixer)
@@ -57,22 +64,24 @@ final class PlayerService {
     /// Schedules playback from the file.
     /// If `startAt` is provided, playback starts at that audio time.
     func schedule(startAt: AVAudioTime? = nil) throws {
-        // Ensure the audio file is available.
         if audioFile == nil {
             audioFile = try AVAudioFile(forReading: track.url)
         }
+
         guard let file = audioFile else {
-            throw NSError(domain: "PlayerService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Audio file not loaded"])
+            throw NSError(
+                domain: "PlayerService",
+                code: -1,
+                userInfo: [NSLocalizedDescriptionKey: "Audio file not loaded"]
+            )
         }
 
-        // Stop any current playback and reset the file position.
         if playerNode.isPlaying {
             playerNode.stop()
         }
+
         file.framePosition = 0
 
-        // Schedule the file on the player node.
-        // If looping is enabled, schedule it again after completion.
         playerNode.scheduleFile(file, at: startAt) { [weak self] in
             guard let self = self else { return }
             if self.track.loop {
@@ -105,7 +114,7 @@ final class PlayerService {
     }
 
     var isPlaying: Bool {
-        return playerNode.isPlaying
+        playerNode.isPlaying
     }
 
     /// Adjusts per-track gain through the mixer node.
@@ -116,5 +125,10 @@ final class PlayerService {
     /// Adjusts per-track pan through the mixer node.
     func setPan(_ pan: Float) {
         trackMixer.pan = pan
+    }
+
+    /// Access to the modular effect chain for future effect wiring.
+    var effects: TrackEffectChain {
+        effectChain
     }
 }
