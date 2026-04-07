@@ -30,7 +30,7 @@ final class LowPassFilterController {
     private func configureFilter() {
         let band = lowPassBand
         band.filterType = .lowPass
-        band.frequency = 18_000
+        band.frequency = 500.0
         band.bandwidth = 0.5
         band.bypass = false
         isEnabled = true

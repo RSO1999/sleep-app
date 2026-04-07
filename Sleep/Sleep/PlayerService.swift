@@ -39,6 +39,9 @@ final class PlayerService {
         engineHost.attach(node: playerNode)
         engineHost.attach(node: trackMixer)
 
+        // Enable low-pass by default so the effect node exists before connecting the chain.
+        effectChain.enableLowPass()
+
         // Route the player through the effect chain and then into the track mixer.
         // For now the chain is pass-through, so this is effectively:
         // playerNode -> trackMixer -> mainMixerNode

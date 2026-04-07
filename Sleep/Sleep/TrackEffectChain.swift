@@ -47,7 +47,7 @@ final class TrackEffectChain {
 
     /// Configure a low-pass effect for this chain.
     /// If the controller does not exist yet, it is created and attached.
-    func enableLowPass(cutoff: Float = 18_000, bandwidth: Float = 0.5) {
+    func enableLowPass(cutoff: Float = 200, bandwidth: Float = 0.5) {
         if lowPassController == nil {
             lowPassController = LowPassFilterController(engineHost: engineHost)
             lowPassController?.attach()
